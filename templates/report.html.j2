@@ -1,0 +1,77 @@
+{#-
+  Template del reporte (Jinja2, autoescape activo).
+  Los estilos van inline: los clientes de correo no soportan hojas externas.
+
+  Variables disponibles:
+    title        Título del reporte
+    generated    Fecha de generación (texto, UTC)
+    url          Endpoint de métricas consultado
+    results      Lista de consultas, cada una con:
+                   title, query, org_id  Datos de la consulta
+                   columns               Etiquetas (columnas) presentes
+                   rows                  Lista de {labels: {...}, value: "..."}
+                   error                 Mensaje de error, o vacío
+    total_rows   Total de filas de todas las consultas
+    failed       Cantidad de consultas con error
+-#}
+{%- set th = "border-bottom:2px solid #d0d5dd" -%}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+</head>
+<body style="margin:0;padding:24px;background:#ffffff;
+             font-family:Arial,Helvetica,sans-serif;color:#101828">
+  <div style="max-width:720px;margin:0 auto">
+    <h2 style="margin:0 0 4px">{{ title }}</h2>
+    <p style="margin:0 0 12px;color:#475467;font-size:13px">
+      Generado el {{ generated }}
+    </p>
+{% for result in results %}
+    <h3 style="margin:24px 0 4px">{{ result.title }}</h3>
+    <p style="margin:0 0 8px;color:#475467;font-size:12px">
+      Consulta:
+      <code style="background:#f2f4f7;padding:2px 4px;border-radius:3px">{{ result.query }}</code>
+    </p>
+  {% if result.error %}
+    <p style="font-size:14px">Sin datos por error.</p>
+    <p style="color:#d92d20;font-weight:bold">
+      Error ejecutando la consulta: {{ result.error }}
+    </p>
+  {% elif result.rows %}
+    <p style="font-size:14px">{{ result.rows | length }} resultado(s).</p>
+    <table role="presentation" cellpadding="8" cellspacing="0"
+           style="border-collapse:collapse;width:100%;font-size:14px">
+      <thead>
+        <tr style="background:#f2f4f7">
+          {% for col in result.columns %}
+          <th style="text-align:left;{{ th }}">{{ col }}</th>
+          {% endfor %}
+          <th style="text-align:right;{{ th }}">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in result.rows %}
+        <tr>
+          {% for col in result.columns %}
+          <td>{{ row.labels.get(col, "") }}</td>
+          {% endfor %}
+          <td style="text-align:right">{{ row.value }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p style="font-size:14px">La consulta no devolvió resultados.</p>
+    <p style="color:#12b76a;font-weight:bold">
+      La consulta no devolvió resultados. ✔
+    </p>
+  {% endif %}
+{% endfor %}
+    <p style="margin-top:24px;color:#98a2b3;font-size:12px">
+      Fuente: Grafana Mimir ({{ url }})
+    </p>
+  </div>
+</body>
+</html>

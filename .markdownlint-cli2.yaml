@@ -1,0 +1,13 @@
+---
+# Reglas base del estándar de Mikroways (@mikroways/docs-quality).
+globs:
+  - "**/*.md"
+ignores:
+  - ".direnv/**"
+  - ".venv/**"
+config:
+  default: true
+  MD013: false
+  MD046:
+    style: fenced
+  MD060: false

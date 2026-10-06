@@ -1,0 +1,52 @@
+---
+# Linters del repo. Uso local:
+#   pre-commit install            # correr en cada commit
+#   pre-commit run --all-files    # correr sobre todo el repo
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.3
+    hooks:
+      - id: markdownlint-cli2
+
+  # pre-commit arma su propio entorno con las dependencias de los tests
+  # (mantenerlas en línea con requirements.txt; boto3 no hace falta porque los
+  # tests lo simulan). En GitHub se saltea en el workflow de lint: lo corre el
+  # de tests.
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: python -m pytest -q -p no:cacheprovider
+        language: python
+        additional_dependencies:
+          - pytest>=9,<10
+          - requests>=2.31,<3
+          - PyYAML>=6,<7
+          - Jinja2>=3.1,<4
+        pass_filenames: false
+        files: ^(hreidar/|tests/|templates/|report\.py$|pyproject\.toml$|requirements.*\.txt$)

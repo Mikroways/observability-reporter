@@ -1,0 +1,22 @@
+# Definición de las consultas del reporte.
+# Copiar a queries.yaml (o indicar la ruta con REPORT_CONFIG / --config).
+# Cada consulta genera una sección con su propia tabla en el reporte.
+
+# Título general del reporte (opcional; precede a REPORT_TITLE, lo pisa --title).
+title: Reporte de métricas
+
+queries:
+  # title:  nombre de la sección (opcional; default "Consulta N")
+  # query:  consulta PromQL instantánea que devuelva un vector (obligatorio)
+  # org_id: tenant de Mimir para esta consulta (opcional; default METRICS_ORG_ID)
+  - title: Latencia media HTTP > 0.3s (14d)
+    query: |
+      sort_desc(
+        sum(increase(http_request_duration_seconds_sum{job="mi-app"}[14d])) by (instance, handler)
+        /
+        sum(increase(http_request_duration_seconds_count{job="mi-app"}[14d])) by (instance, handler)
+        > 0.3
+      )
+
+  - title: Targets caídos
+    query: up == 0

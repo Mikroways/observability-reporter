@@ -1,0 +1,12 @@
+---
+extends: default
+
+rules:
+  # Las consultas PromQL de ejemplo y las imágenes/hashes fijados en los
+  # workflows son largos y no se pueden cortar.
+  line-length:
+    max: 160
+  # El "---" inicial es opcional.
+  document-start: disable
+  truthy:
+    check-keys: false

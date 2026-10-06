@@ -1,0 +1,7 @@
+.direnv/
+.git/
+*.html
+__pycache__/
+*.pyc
+README.md
+chart/

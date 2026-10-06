@@ -1,0 +1,81 @@
+---
+name: Security
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: Secrets in git history (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan
+        env:
+          IMAGE: ghcr.io/trufflesecurity/trufflehog:3.97.9@sha256:52e67fef4d054ecff5c2ce4b4ae376626d1ef54aa0898b53cac19c25e92e14db
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          range=()
+          case "$EVENT" in
+            pull_request)
+              range=(--since-commit "$PR_BASE" --branch "$PR_HEAD") ;;
+            push)
+              if [[ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]]; then
+                range=(--since-commit "$PUSH_BEFORE")
+              fi
+              range+=(--branch "$PUSH_AFTER") ;;
+          esac
+          echo "Scanning: ${range[*]:-full history}"
+          docker run --rm -v "$PWD:/repo" -w /repo "$IMAGE" \
+            git file:///repo "${range[@]}" \
+            --results=verified,unknown --json --fail --no-update \
+            > "$RUNNER_TEMP/trufflehog.json"
+      - name: Summary
+        if: ${{ !cancelled() }}
+        env:
+          BLOB: ${{ github.server_url }}/${{ github.repository }}/blob
+        run: |
+          {
+            echo "### TruffleHog: secrets in git history"
+            echo
+            jq -rs --arg blob "$BLOB" -f .github/workflows/templates/trufflehog.jq "$RUNNER_TEMP/trufflehog.json"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  trivy-fs:
+    name: Vulnerabilities, secrets, misconfig (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.74.0
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: template
+          template: "@.github/workflows/templates/trivy.tpl"
+          output: ${{ runner.temp }}/trivy-fs.md
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "### Trivy: dependencies, secrets and misconfigurations"
+            cat "$RUNNER_TEMP/trivy-fs.md"
+            echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
