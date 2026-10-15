@@ -4,8 +4,12 @@ description: >-
   Reporte periódico de métricas de Grafana Mimir / Prometheus, enviado por
   correo con Amazon SES.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Versión del chart. El pipeline la lee de acá y falla si ya está publicada, así
+# que todo cambio bajo helm/ necesita su bump.
+version: 0.0.2
+# Versión de la aplicación: el tag de la imagen que despliega el chart. Solo sube
+# cuando se publica una imagen nueva.
+appVersion: "0.0.1"
 keywords:
   - prometheus
   - mimir

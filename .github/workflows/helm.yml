@@ -4,8 +4,9 @@ name: Helm
 on:
   push:
     branches: [main, development]
-    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+    paths: ["helm/**", ".github/workflows/helm.yml"]
   pull_request:
+    paths: ["helm/**", ".github/workflows/helm.yml"]
 
 permissions:
   contents: read
@@ -38,7 +39,7 @@ jobs:
       - name: Correr los unit tests del chart
         run: helm unittest "$CHART"
 
-  package:
+  publish:
     name: Empaquetar y publicar el chart
     needs: test
     runs-on: ubuntu-latest
@@ -52,18 +53,33 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
-      - name: Empaquetar el chart
-        id: package
-        # En un tag, el chart se publica con la misma versión que la imagen;
-        # fuera de un tag se usa la versión de Chart.yaml y solo se empaqueta.
+      - name: Verificar que la versión del chart no esté publicada
+        id: chart
+        # La versión sale de Chart.yaml. Si ya está en el registry el chart
+        # cambió sin bump, y el pipeline corta antes de pisar nada.
+        env:
+          OWNER: ${{ github.repository_owner }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
-            helm package "$CHART" --destination dist \
-              --version "$GITHUB_REF_NAME" --app-version "$GITHUB_REF_NAME"
-          else
-            helm package "$CHART" --destination dist
+          name=$(helm show chart "$CHART" | grep '^name:' | cut -d: -f2 | tr -d '[:space:]')
+          version=$(helm show chart "$CHART" | grep '^version:' | cut -d: -f2 | tr -d '[:space:]')
+          repo="ghcr.io/${OWNER,,}/charts"
+          echo "$TOKEN" | helm registry login ghcr.io \
+            --username "$GITHUB_ACTOR" --password-stdin
+          if helm show chart "oci://$repo/$name" --version "$version" >/dev/null 2>&1; then
+            echo "::error file=$CHART/Chart.yaml::La versión $version de $name ya está publicada en $repo. Subí version: en $CHART/Chart.yaml."
+            exit 1
           fi
+          echo "El chart $name $version no está publicado todavía."
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Empaquetar el chart
+        id: package
+        run: |
+          set -euo pipefail
+          helm package "$CHART" --destination dist
           echo "file=$(ls dist/*.tgz)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -72,13 +88,10 @@ jobs:
           path: ${{ steps.package.outputs.file }}
 
       - name: Publicar el chart en GHCR
-        if: github.ref_type == 'tag'
+        # Solo desde main. En development y en los pull requests el chart se
+        # empaqueta y queda como artefacto del run, sin publicarse.
+        if: github.ref == 'refs/heads/main'
         env:
           FILE: ${{ steps.package.outputs.file }}
-          OWNER: ${{ github.repository_owner }}
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "$TOKEN" | helm registry login ghcr.io \
-            --username "$GITHUB_ACTOR" --password-stdin
-          helm push "$FILE" "oci://ghcr.io/${OWNER,,}/charts"
+          REPO: ${{ steps.chart.outputs.repo }}
+        run: helm push "$FILE" "oci://$REPO"

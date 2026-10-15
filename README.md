@@ -276,11 +276,19 @@ El detalle de cada valor está en `helm/hreidar/README.md`.
 
 ### Publicación del chart
 
-El workflow `.github/workflows/helm.yml` corre `helm lint` y los unit tests en
-cada push a `main`/`development` y en cada pull request. Al crear un tag
-`X.Y.Z` empaqueta el chart y lo publica como artefacto OCI en
-`ghcr.io/mikroways/charts/hreidar`, con la misma versión que la imagen; en los
-pull requests solo lo empaqueta y lo deja como artefacto del run.
+El workflow `.github/workflows/helm.yml` corre en los push y pull requests que
+tocan `helm/**`: `helm lint`, los unit tests y el empaquetado. Al mergear a
+`main` publica el chart como artefacto OCI en `ghcr.io/mikroways/charts/hreidar`;
+en los pull requests solo lo deja como artefacto del run.
+
+La versión la manda `helm/hreidar/Chart.yaml`, no el tag de git:
+
+- `version` es la del chart. El pipeline chequea contra el registry y **falla**
+  si esa versión ya está publicada, así que cada cambio bajo `helm/` va con su
+  bump. El error aparece ya en el pull request.
+- `appVersion` es el tag de la imagen que despliega el chart, y sube solo cuando
+  se publica una imagen nueva (que sigue saliendo del tag `X.Y.Z`, ver
+  [La imagen](#la-imagen)).
 
 Igual que con la imagen, la primera vez GHCR crea el paquete como **privado**:
 hay que hacerlo público una vez en *Packages → charts/hreidar → Package

@@ -11,7 +11,8 @@ ConfigMap, arma el reporte HTML y lo envía por Amazon SES.
 
 ## Instalación
 
-El chart se publica como artefacto OCI al crear un tag `X.Y.Z` en el repo:
+El chart se publica como artefacto OCI al mergear a `main` un cambio bajo
+`helm/`, con la versión de `Chart.yaml`:
 
 ```sh
 helm upgrade --install hreidar oci://ghcr.io/mikroways/charts/hreidar \
