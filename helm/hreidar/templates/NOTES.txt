@@ -1,0 +1,26 @@
+Hreidar quedó instalado como CronJob en el namespace {{ .Release.Namespace }}.
+
+  Schedule: {{ .Values.cronjob.schedule }}{{ with .Values.cronjob.timeZone }} ({{ . }}){{ end }}
+  {{- if .Values.cronjob.suspend }}
+  ATENCIÓN: el CronJob está suspendido (cronjob.suspend=true).
+  {{- end }}
+  Consultas: ConfigMap {{ include "hreidar.queriesConfigMapName" . }}, montado en {{ include "hreidar.queriesPath" . }}
+  {{- if not .Values.serviceAccount.roleArn }}
+
+  No definiste serviceAccount.roleArn: el envío por la API de SES solo va a
+  funcionar si el pod obtiene credenciales de AWS por otro medio (credenciales
+  SMTP en config.secretEnv, EKS Pod Identity, etc.).
+  {{- end }}
+
+1. Ver el estado del CronJob y sus ejecuciones:
+
+   kubectl get cronjob --namespace {{ .Release.Namespace }} {{ include "hreidar.fullname" . }}
+   kubectl get jobs --namespace {{ .Release.Namespace }} --selector app.kubernetes.io/instance={{ .Release.Name }}
+
+2. Disparar el reporte a mano, sin esperar al schedule:
+
+   kubectl create job --namespace {{ .Release.Namespace }} --from=cronjob/{{ include "hreidar.fullname" . }} {{ include "hreidar.fullname" . }}-manual
+
+3. Ver los logs de la última ejecución:
+
+   kubectl logs --namespace {{ .Release.Namespace }} --selector app.kubernetes.io/instance={{ .Release.Name }} --tail=-1

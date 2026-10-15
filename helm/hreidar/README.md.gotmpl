@@ -1,0 +1,106 @@
+{{ template "chart.header" . }}
+{{ template "chart.deprecationWarning" . }}
+
+{{ template "chart.description" . }}
+
+Despliega [Hreidar](https://github.com/Mikroways/observability-reporter) como un
+`CronJob`: en cada ejecución corre las consultas PromQL definidas en un
+ConfigMap, arma el reporte HTML y lo envía por Amazon SES.
+
+{{ template "chart.badgesSection" . }}
+
+## Instalación
+
+El chart se publica como artefacto OCI al crear un tag `X.Y.Z` en el repo:
+
+```sh
+helm upgrade --install hreidar oci://ghcr.io/mikroways/charts/hreidar \
+  --version <X.Y.Z> --namespace observability --values values.yaml
+```
+
+Desde el repo, sin publicar: `helm upgrade --install hreidar helm/hreidar -f values.yaml`.
+
+## Qué instala
+
+| Recurso | Template | Cuándo |
+|---------|----------|--------|
+| `CronJob` | `cronjob.yaml` | siempre |
+| `ServiceAccount` | `serviceaccount.yaml` | `serviceAccount.create=true` |
+| `ConfigMap` de consultas | `configmap-queries.yaml` | salvo que se use `queries.existingConfigMap` |
+| `ConfigMap` de entorno | `configmap.yaml` | si hay `config.env` |
+| `Secret` de entorno | `secret.yaml` | si hay `config.secretEnv` |
+
+## Las consultas
+
+`queries.config` tiene la misma estructura que `queries.example.yaml` del repo:
+`title` opcional y la lista `queries`, donde cada ítem define `query`
+(obligatoria) y, opcionalmente, `title` y `org_id`. El chart lo serializa en el
+ConfigMap, lo monta en `queries.mountPath` y apunta la variable `REPORT_CONFIG`
+del contenedor al archivo resultante.
+
+```yaml
+queries:
+  config:
+    title: Reporte semanal
+    queries:
+      - title: Targets caídos
+        query: up == 0
+      - title: Latencia media HTTP > 0.3s (14d)
+        org_id: mi-tenant
+        query: |
+          sort_desc(
+            sum(increase(http_request_duration_seconds_sum{job="mi-app"}[14d])) by (handler)
+            /
+            sum(increase(http_request_duration_seconds_count{job="mi-app"}[14d])) by (handler)
+            > 0.3
+          )
+```
+
+Si las consultas se gestionan por fuera del chart (otro repo, otro operador),
+usar `queries.existingConfigMap` y el chart solo las monta.
+
+## Envío por SES: IRSA o credenciales SMTP
+
+Con **IRSA** (recomendado) no hacen falta secretos: se anota el ServiceAccount
+con el rol de IAM y `boto3` toma las credenciales del token proyectado.
+
+```yaml
+serviceAccount:
+  create: true
+  roleArn: arn:aws:iam::123456789012:role/hreidar
+config:
+  env:
+    AWS_REGION: us-east-1
+    SES_SENDER: reportes@example.com
+    SES_TO: sre@example.com
+```
+
+El rol necesita `ses:SendEmail` y `ses:SendRawEmail`, y su trust policy debe
+habilitar al ServiceAccount de este namespace.
+
+Con **SMTP**, las credenciales van en `config.secretEnv` (cifrado con helm
+secrets / SOPS) o en un Secret externo referenciado con `extraEnvFrom`:
+
+```yaml
+extraEnvFrom:
+  - secretRef:
+      name: hreidar-ses-credentials   # SES_SMTP_USER y SES_SMTP_PASSWORD
+```
+
+## Ejecutar el reporte a mano
+
+```sh
+kubectl create job --from=cronjob/<release>-hreidar <release>-hreidar-manual
+kubectl logs --selector app.kubernetes.io/instance=<release> --tail=-1
+```
+
+## Tests del chart
+
+```sh
+helm lint helm/hreidar
+helm unittest helm/hreidar
+```
+
+{{ template "chart.valuesSection" . }}
+
+{{ template "helm-docs.versionFooter" . }}

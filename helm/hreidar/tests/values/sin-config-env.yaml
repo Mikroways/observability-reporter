@@ -1,0 +1,4 @@
+# Un null explícito borra las variables de entorno que trae values.yaml.
+config:
+  env: null
+  secretEnv: null

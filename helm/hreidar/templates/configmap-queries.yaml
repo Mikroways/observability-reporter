@@ -1,0 +1,11 @@
+{{- if not .Values.queries.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hreidar.queriesConfigMapName" . }}
+  labels:
+    {{- include "hreidar.labels" . | nindent 4 }}
+data:
+  {{ .Values.queries.key }}: |
+    {{- tpl (required "queries.config es obligatorio salvo que se use queries.existingConfigMap" .Values.queries.config | toYaml) $ | nindent 4 }}
+{{- end }}

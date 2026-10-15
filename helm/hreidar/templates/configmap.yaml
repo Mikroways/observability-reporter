@@ -1,0 +1,9 @@
+{{- if .Values.config.env }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hreidar.fullname" . }}
+  labels:
+    {{- include "hreidar.labels" . | nindent 4 }}
+data: {{- tpl (.Values.config.env | toYaml) . | nindent 2 }}
+{{- end }}

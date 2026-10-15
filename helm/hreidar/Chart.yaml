@@ -1,0 +1,17 @@
+apiVersion: v2
+name: hreidar
+description: >-
+  Reporte periódico de métricas de Grafana Mimir / Prometheus, enviado por
+  correo con Amazon SES.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - prometheus
+  - mimir
+  - observability
+  - reporting
+  - cronjob
+home: https://github.com/Mikroways/observability-reporter
+sources:
+  - https://github.com/Mikroways/observability-reporter

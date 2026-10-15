@@ -1,0 +1,214 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/main/schema/helm-testsuite.json
+suite: CronJob del reporte
+templates:
+  - cronjob.yaml
+  - configmap.yaml
+  - configmap-queries.yaml
+  - secret.yaml
+release:
+  name: rel
+tests:
+  - it: Renderiza un único CronJob con el schedule y la imagen del chart
+    template: cronjob.yaml
+    chart:
+      appVersion: 1.2.3
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: CronJob
+      - equal:
+          path: metadata.name
+          value: rel-hreidar
+      - equal:
+          path: spec.schedule
+          value: "0 7 * * *"
+      - equal:
+          path: spec.concurrencyPolicy
+          value: Forbid
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.restartPolicy
+          value: Never
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.serviceAccountName
+          value: rel-hreidar
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          value: ghcr.io/mikroways/observability-reporter:1.2.3
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].args
+          value:
+            - --send
+
+  - it: Falla si no se define el schedule
+    template: cronjob.yaml
+    set:
+      cronjob.schedule: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: cronjob.schedule es obligatorio
+
+  - it: Apunta REPORT_CONFIG al archivo de consultas montado
+    template: cronjob.yaml
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: REPORT_CONFIG
+            value: /etc/hreidar/queries.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].volumeMounts
+          content:
+            name: queries
+            mountPath: /etc/hreidar
+            readOnly: true
+
+  - it: Respeta el mountPath y la key propios del archivo de consultas
+    template: cronjob.yaml
+    set:
+      queries.mountPath: /config/
+      queries.key: report.yaml
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: REPORT_CONFIG
+            value: /config/report.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].volumeMounts
+          content:
+            name: queries
+            mountPath: /config
+            readOnly: true
+
+  - it: Permite pisar REPORT_CONFIG y agregar variables con env
+    template: cronjob.yaml
+    set:
+      env:
+        REPORT_CONFIG: /otro/queries.yaml
+        REPORT_TITLE: "{{ .Release.Name }} - métricas"
+    asserts:
+      - lengthEqual:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          count: 2
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: REPORT_CONFIG
+            value: /otro/queries.yaml
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.containers[0].env
+          content:
+            name: REPORT_TITLE
+            value: rel - métricas
+
+  - it: Toma el entorno del ConfigMap, del Secret y de los secretos externos
+    template: cronjob.yaml
+    set:
+      config.secretEnv.SES_SMTP_USER: usuario
+      extraEnvFrom:
+        - secretRef:
+            name: ses-externo
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].envFrom
+          value:
+            - configMapRef:
+                name: rel-hreidar
+            - secretRef:
+                name: rel-hreidar
+            - secretRef:
+                name: ses-externo
+
+  - it: No define envFrom si no hay configuración de entorno
+    template: cronjob.yaml
+    values:
+      - values/sin-config-env.yaml
+    asserts:
+      - isNull:
+          path: spec.jobTemplate.spec.template.spec.containers[0].envFrom
+
+  - it: Monta las consultas del chart y un /tmp escribible
+    template: cronjob.yaml
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content:
+            name: queries
+            configMap:
+              name: rel-hreidar-queries
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: {}
+
+  - it: Monta el ConfigMap de consultas existente cuando se indica
+    template: cronjob.yaml
+    set:
+      queries.existingConfigMap: mis-queries
+    asserts:
+      - contains:
+          path: spec.jobTemplate.spec.template.spec.volumes
+          content:
+            name: queries
+            configMap:
+              name: mis-queries
+
+  - it: Corre sin privilegios, con el filesystem de solo lectura y con recursos
+    template: cronjob.yaml
+    asserts:
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot
+          value: true
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.jobTemplate.spec.template.spec.containers[0].securityContext.capabilities.drop
+          value:
+            - ALL
+      - isNotEmpty:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.requests
+      - isNotEmpty:
+          path: spec.jobTemplate.spec.template.spec.containers[0].resources.limits
+
+  - it: Anota el checksum del ConfigMap y del Secret en el pod
+    template: cronjob.yaml
+    set:
+      config.secretEnv.SES_SMTP_USER: usuario
+    asserts:
+      - isNotEmpty:
+          path: spec.jobTemplate.spec.template.metadata.annotations["checksum/config"]
+      - isNotEmpty:
+          path: spec.jobTemplate.spec.template.metadata.annotations["checksum/queries"]
+      - isNotEmpty:
+          path: spec.jobTemplate.spec.template.metadata.annotations["checksum/secret"]
+
+  - it: Permite suspenderlo, fijar la zona horaria y anotarlo
+    template: cronjob.yaml
+    set:
+      cronjob.suspend: true
+      cronjob.timeZone: America/Argentina/Cordoba
+      cronjob.annotations:
+        argocd.argoproj.io/sync-wave: "1"
+      cronjob.podAnnotations:
+        sidecar.istio.io/inject: "false"
+      cronjob.podLabels:
+        mikroways.net/team: sre
+    asserts:
+      - equal:
+          path: spec.suspend
+          value: true
+      - equal:
+          path: spec.timeZone
+          value: America/Argentina/Cordoba
+      - equal:
+          path: metadata.annotations["argocd.argoproj.io/sync-wave"]
+          value: "1"
+      - equal:
+          path: spec.jobTemplate.spec.template.metadata.annotations["sidecar.istio.io/inject"]
+          value: "false"
+      - equal:
+          path: spec.jobTemplate.spec.template.metadata.labels["mikroways.net/team"]
+          value: sre

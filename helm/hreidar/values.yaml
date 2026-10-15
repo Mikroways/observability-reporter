@@ -1,0 +1,171 @@
+# Default values for hreidar.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  # -- Imagen del reporte (Hreidar)
+  repository: ghcr.io/mikroways/observability-reporter
+  # -- Image pullPolicy
+  pullPolicy: IfNotPresent
+  # -- Tag de la imagen. Por defecto, el `appVersion` del chart.
+  tag: ""
+
+# -- Array of objects, each one having key `name:` and value is a secretName.
+# Allows gotpl expressions
+imagePullSecrets: []
+# - name: "{{ .Values.global.regcred }}"
+# @ignored
+nameOverride: ""
+# @ignored
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Crear o no el ServiceAccount del CronJob
+  create: true
+  # -- ARN del rol de IAM a asumir con IRSA. Si se define, se agrega la
+  # anotación `eks.amazonaws.com/role-arn`. El rol necesita permisos de
+  # `ses:SendEmail` / `ses:SendRawEmail` y su trust policy debe habilitar al
+  # ServiceAccount de este namespace. Allows gotpl expressions.
+  roleArn: ""
+  # roleArn: "{{ .Values.global.irsa.hreidarRoleArn }}"
+  # -- Anotaciones extra del ServiceAccount. Se suman a la de IRSA.
+  # Allows gotpl expressions
+  annotations: {}
+  # -- Nombre del ServiceAccount. Si queda vacío y `create` es true, se usa el
+  # fullname del release.
+  name: ""
+
+cronjob:
+  # -- Expresión cron de ejecución del reporte (obligatoria)
+  schedule: "0 7 * * *"
+  # -- Zona horaria de la expresión cron (ej: `America/Argentina/Cordoba`).
+  # Requiere Kubernetes >= 1.27.
+  timeZone: ""
+  # -- Suspender la ejecución programada
+  suspend: false
+  # -- Qué hacer si una ejecución se solapa con la anterior
+  concurrencyPolicy: Forbid
+  # -- Margen en segundos para arrancar una ejecución demorada
+  startingDeadlineSeconds: 300
+  # -- Cantidad de Jobs exitosos que se conservan
+  successfulJobsHistoryLimit: 3
+  # -- Cantidad de Jobs fallidos que se conservan
+  failedJobsHistoryLimit: 3
+  # -- Reintentos del Job antes de darlo por fallido
+  backoffLimit: 2
+  # -- Tiempo máximo de ejecución del Job, en segundos
+  activeDeadlineSeconds: 900
+  # -- Segundos hasta que el Job terminado se borra solo
+  ttlSecondsAfterFinished: 86400
+  # -- restartPolicy del pod. Solo `Never` u `OnFailure`.
+  restartPolicy: Never
+  # -- Anotaciones del CronJob (helm hooks, argo waves, etc.)
+  annotations: {}
+  # -- Anotaciones del pod. Se suman a los checksums del ConfigMap y el Secret.
+  podAnnotations: {}
+  # -- Labels extra del pod
+  podLabels: {}
+  # -- `command` del contenedor. Vacío usa el ENTRYPOINT de la imagen.
+  command: []
+  # -- `args` del contenedor. `--send` envía el reporte por SES.
+  args:
+    - --send
+
+queries:
+  # -- Usar un ConfigMap ya existente con las consultas en lugar del que crea
+  # el chart. Allows gotpl expressions.
+  existingConfigMap: ""
+  # -- Clave del ConfigMap que contiene el archivo de consultas
+  key: queries.yaml
+  # -- Directorio donde se monta el archivo de consultas
+  mountPath: /etc/hreidar
+  # -- Contenido del archivo de consultas, con la misma estructura que
+  # `queries.example.yaml`: `title` opcional y la lista `queries`, cada una con
+  # `query` (obligatoria), `title` y `org_id` opcionales.
+  # Allows gotpl expressions.
+  config:
+    title: Reporte de métricas
+    queries:
+      - title: Targets caídos
+        query: up == 0
+
+# -- Key value pairs created as environment of the container. This key has a
+# higher precedence than `config.env` and `config.secretEnv`. It allows gotpl
+# expressions.
+env: {}
+# REPORT_TITLE: "Reporte de métricas"
+
+config:
+  # -- Key value pairs created using a ConfigMap and rendered as environment
+  # variables inside container. Allows gotpl expressions, for example:
+  # `MY_AWSOME_TPL_ENV_VAR: "{{ .Values.global.myAwesomeEnvVar }}"`
+  env:
+    METRICS_URL: http://mimir-nginx.mimir.svc.cluster.local/prometheus/api/v1/query
+    METRICS_ORG_ID: ""
+    AWS_REGION: us-east-1
+    SES_SENDER: ""
+    SES_TO: ""
+    # SES_SUBJECT: "Reporte de métricas"
+
+  # -- Sensitive key value pairs created using a Secret and rendered as
+  # environment variables inside container. Pensado para las credenciales SMTP
+  # de SES (`SES_SMTP_USER` / `SES_SMTP_PASSWORD`); sin ellas se usa la API de
+  # SES con IRSA. Cifrar este bloque con helm secrets (SOPS) o dejarlo vacío y
+  # referenciar un Secret externo con `extraEnvFrom`.
+  # Allows gotpl expressions.
+  secretEnv: {}
+  # SES_SMTP_USER: "OVERRIDE_ME"
+  # SES_SMTP_PASSWORD: "OVERRIDE_ME"
+
+# -- Array of objects added as-is to the container `envFrom`. Útil para Secrets
+# creados por External Secrets Operator. Allows gotpl expressions.
+extraEnvFrom: []
+# - secretRef:
+#     name: hreidar-ses-credentials
+
+# -- Array of objects added as-is to the pod `volumes`
+extraVolumes: []
+# - name: ca-bundle
+#   configMap:
+#     name: custom-ca
+
+# -- Array of objects added as-is to the container `volumeMounts`
+extraVolumeMounts: []
+# - name: ca-bundle
+#   mountPath: /etc/ssl/custom
+#   readOnly: true
+
+# -- securityContext del pod. Los uid/gid son los que crea el Dockerfile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- securityContext del contenedor del reporte
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Recursos del contenedor del reporte
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# @ignored
+nodeSelector: {}
+
+# @ignored
+tolerations: []
+
+# @ignored
+affinity: {}

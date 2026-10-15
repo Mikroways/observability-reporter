@@ -146,6 +146,9 @@ ConfigMap) en `/app/queries.yaml`, o en otra ruta indicada con `REPORT_CONFIG`.
 El template por defecto viene en la imagen; para usar otro, montarlo y
 apuntar `REPORT_TEMPLATE` a esa ruta.
 
+De eso se encarga el chart de Helm del repo: ver
+[Despliegue en Kubernetes](#despliegue-en-kubernetes).
+
 ## Envío por correo (Amazon SES)
 
 Con `--send` el reporte se manda por Amazon SES, de una de dos formas:
@@ -216,6 +219,79 @@ usa la API. Pasos:
 Las **credenciales SMTP** se crean en la consola de SES (*SMTP settings →
 Create SMTP credentials*). **No** son las AWS access keys: son un usuario y
 contraseña SMTP específicos.
+
+## Despliegue en Kubernetes
+
+El chart de Helm está en `helm/hreidar` y despliega el reporte como un
+`CronJob`:
+
+| Recurso                                                       | Cuándo                                        |
+| ------------------------------------------------------------- | --------------------------------------------- |
+| `CronJob` con el schedule del reporte                         | siempre                                       |
+| `ServiceAccount` anotada para IRSA con `serviceAccount.roleArn` | `serviceAccount.create=true`                |
+| `ConfigMap` con el archivo de consultas, al que apunta `REPORT_CONFIG` | salvo que se use `queries.existingConfigMap` |
+| `ConfigMap` con las variables de entorno                      | si hay `config.env`                           |
+| `Secret` con las variables sensibles                          | si hay `config.secretEnv`                     |
+
+Valores mínimos para enviar por SES con IRSA:
+
+```yaml
+serviceAccount:
+  roleArn: arn:aws:iam::<cuenta>:role/<role>
+
+cronjob:
+  schedule: "0 7 * * *"
+  timeZone: America/Argentina/Cordoba
+
+config:
+  env:
+    METRICS_URL: https://mimir.example.com/prometheus/api/v1/query
+    METRICS_ORG_ID: mi-tenant
+    AWS_REGION: us-east-1
+    SES_SENDER: reportes@example.com
+    SES_TO: sre@example.com
+
+queries:
+  config:
+    title: Reporte de métricas
+    queries:
+      - title: Targets caídos
+        query: up == 0
+```
+
+```bash
+helm upgrade --install hreidar oci://ghcr.io/mikroways/charts/hreidar \
+  --version 1.0.0 --namespace observability --values values.yaml
+```
+
+Las credenciales SMTP, si se usan en lugar de IRSA, van en `config.secretEnv`
+(cifrado con helm secrets / SOPS) o en un Secret externo referenciado con
+`extraEnvFrom`. Para disparar el reporte sin esperar al schedule:
+
+```bash
+kubectl create job --from=cronjob/hreidar hreidar-manual
+```
+
+El detalle de cada valor está en `helm/hreidar/README.md`.
+
+### Publicación del chart
+
+El workflow `.github/workflows/helm.yml` corre `helm lint` y los unit tests en
+cada push a `main`/`development` y en cada pull request. Al crear un tag
+`X.Y.Z` empaqueta el chart y lo publica como artefacto OCI en
+`ghcr.io/mikroways/charts/hreidar`, con la misma versión que la imagen; en los
+pull requests solo lo empaqueta y lo deja como artefacto del run.
+
+Igual que con la imagen, la primera vez GHCR crea el paquete como **privado**:
+hay que hacerlo público una vez en *Packages → charts/hreidar → Package
+settings → Change visibility*.
+
+### Dónde vive la configuración del despliegue
+
+Este repo tiene el código, la imagen y el chart. Los valores de cada ambiente
+(schedule, consultas, destinatarios, rol de IRSA) y la versión desplegada viven
+en el repo GitOps del cliente, no acá. Al liberar una versión nueva, el tag se
+actualiza **a mano** en ese repo: el pipeline termina en la publicación.
 
 ## Cómo probar
 
@@ -321,6 +397,19 @@ propio entorno (listadas en `.pre-commit-config.yaml`; si cambian las de
 `requirements.txt`, actualizarlas ahí también). Para commitear sin correrlos:
 `SKIP=pytest git commit ...`.
 
+El chart de Helm tiene sus propios tests, con
+[helm-unittest](https://github.com/helm-unittest/helm-unittest), en
+`helm/hreidar/tests/`:
+
+```bash
+helm plugin install https://github.com/helm-unittest/helm-unittest \
+  --version 1.2.1 --verify=false   # --verify=false hace falta con helm 4
+helm lint --strict helm/hreidar
+helm unittest helm/hreidar
+```
+
+En GitHub los corre el workflow `.github/workflows/helm.yml`.
+
 ## Linters
 
 Los linters se corren con [pre-commit](https://pre-commit.com/), que instala
@@ -343,6 +432,9 @@ pre-commit run --all-files    # corre los linters sobre todo el repo
 
 En GitHub, el workflow `.github/workflows/lint.yml` corre lo mismo en cada push
 a `main`/`development` y en cada pull request.
+
+yamllint ignora `helm/*/templates/`: son Go templates, no YAML. El chart se
+valida con `helm lint` (ver [Tests](#tests)).
 
 ## Análisis de seguridad
 
@@ -380,6 +472,8 @@ Las actions y las herramientas están fijadas a un SHA o digest.
 | `.pre-commit-config.yaml` | Linters del repo (ver [Linters](#linters))        |
 | `.github/workflows/lint.yml` | Corre los linters en GitHub Actions            |
 | `.github/workflows/docker.yml` | Construye la imagen y la publica en GHCR al crear un tag `X.Y.Z` |
+| `helm/hreidar/` | Chart de Helm que despliega el reporte como CronJob |
+| `.github/workflows/helm.yml` | Lint, unit tests y publicación del chart |
 | `.github/workflows/security.yml` | Corre el análisis de seguridad en cada push y PR |
 | `.github/workflows/static-analysis.yml` | Workflow reusable: TruffleHog y Trivy |
 | `.github/workflows/templates/` | Templates de los resúmenes de cada herramienta |

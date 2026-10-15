@@ -10,3 +10,7 @@ rules:
   document-start: disable
   truthy:
     check-keys: false
+
+# Los templates de Helm son Go templates, no YAML: yamllint no puede parsearlos.
+ignore: |
+  helm/*/templates/
