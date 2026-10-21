@@ -133,7 +133,7 @@ no soportan hojas de estilo externas.
 
 ### La imagen
 
-El workflow `.github/workflows/docker.yml` construye la imagen y la publica en
+El workflow `.github/workflows/release.yml` construye la imagen y la publica en
 `ghcr.io/mikroways/observability-reporter` al crear un tag `X.Y.Z`; la imagen
 lleva el mismo tag (por ejemplo `ghcr.io/mikroways/observability-reporter:1.0.0`).
 En los pull requests solo la construye, sin publicarla.
@@ -287,16 +287,18 @@ El detalle de cada valor está en `helm/hreidar/README.md`.
 
 ### Publicación del chart
 
-El workflow `.github/workflows/helm.yml` corre en los push y pull requests que
-tocan `helm/**`: `helm lint`, los unit tests y el empaquetado. Al mergear a
-`main` publica el chart como artefacto OCI en `ghcr.io/mikroways/charts/hreidar`;
-en los pull requests solo lo deja como artefacto del run.
+El chart lo maneja `.github/workflows/_chart.yml`: `helm lint`, los unit tests y
+el empaquetado. Lo invocan el workflow del pull request y el del push a `main`;
+solo este último publica el chart como artefacto OCI en
+`ghcr.io/mikroways/charts/hreidar`. En los pull requests el `.tgz` queda como
+artefacto del run.
 
 La versión la manda `helm/hreidar/Chart.yaml`, no el tag de git:
 
-- `version` es la del chart. El pipeline chequea contra el registry y **falla**
-  si esa versión ya está publicada, así que cada cambio bajo `helm/` va con su
-  bump. El error aparece ya en el pull request.
+- `version` es la del chart. El job `package` primero mira si el commit tocó
+  `helm/`; si no lo tocó, no hace nada. Si lo tocó, chequea la versión contra el
+  registry y **falla** si ya está publicada, así que cada cambio bajo `helm/` va
+  con su bump. El error aparece ya en el pull request.
 - `appVersion` es el tag de la imagen que despliega el chart, y sube solo cuando
   se publica una imagen nueva (que sigue saliendo del tag `X.Y.Z`, ver
   [La imagen](#la-imagen)).
@@ -406,8 +408,8 @@ python -m pytest tests/test_mail.py    # los de un módulo
 python -m pytest -k smtp -v            # los que coinciden con un nombre
 ```
 
-En GitHub, el workflow `.github/workflows/tests.yml` los corre en cada push a
-`main`/`development` y en cada pull request.
+En GitHub los corre el job `pytest` de `.github/workflows/_checks.yml`, en cada
+pull request y en cada push a `main`.
 
 También corren con pre-commit (hook `pytest`) en cada commit que toque
 `hreidar/`, `tests/`, `templates/`, `report.py`, `pyproject.toml` o los
@@ -427,7 +429,7 @@ helm lint --strict helm/hreidar
 helm unittest helm/hreidar
 ```
 
-En GitHub los corre el workflow `.github/workflows/helm.yml`.
+En GitHub los corre el job `test` de `.github/workflows/_chart.yml`.
 
 ## Linters
 
@@ -449,17 +451,16 @@ pre-commit install            # corre los linters en cada commit
 pre-commit run --all-files    # corre los linters sobre todo el repo
 ```
 
-En GitHub, el workflow `.github/workflows/lint.yml` corre lo mismo en cada push
-a `main`/`development` y en cada pull request.
+En GitHub corre lo mismo el job `pre-commit` de `.github/workflows/_checks.yml`,
+en cada pull request y en cada push a `main`.
 
 yamllint ignora `helm/*/templates/`: son Go templates, no YAML. El chart se
 valida con `helm lint` (ver [Tests](#tests)).
 
 ## Análisis de seguridad
 
-El workflow `.github/workflows/security.yml` corre en cada push a
-`main`/`development` y en cada pull request, y llama al workflow reusable
-`.github/workflows/static-analysis.yml`, con dos jobs:
+`.github/workflows/_checks.yml` trae, además de los linters y los tests, dos
+jobs de seguridad, que corren en cada pull request y en cada push a `main`:
 
 | Job        | Qué revisa                                                                  |
 | ---------- | --------------------------------------------------------------------------- |
@@ -470,6 +471,44 @@ Cada job falla si encuentra algo y deja un resumen en Markdown en la página
 del run. Los templates de esos resúmenes están en `.github/workflows/templates/`.
 
 Las actions y las herramientas están fijadas a un SHA o digest.
+
+## Integración continua
+
+Hay **un workflow por disparador**, así cada commit produce un solo run en la
+pestaña Actions en lugar de varios que parecen no relacionados:
+
+| Workflow            | Disparador              | Qué corre                                                      |
+| ------------------- | ----------------------- | -------------------------------------------------------------- |
+| `pull-request.yml`  | `pull_request`          | checks, lint y unit tests del chart con su chequeo de versión, y build de la imagen (sin publicar nada) |
+| `push.yml`          | push a `main`           | checks y publicación del chart                                  |
+| `release.yml`       | push de un tag `X.Y.Z`  | build y publicación de la imagen                                |
+
+En `pull-request.yml` un push nuevo a la rama del PR cancela el run anterior.
+`push.yml` no cancela: publica el chart, y matar un run a medio publicar puede
+dejar sin publicar una versión que ya se mergeó.
+
+Los jobs viven en tres workflows reusables, con `on: workflow_call` y nada más.
+Eso los deja fuera del listado de Actions y evita repetir los pasos entre
+disparadores:
+
+| Reusable        | Jobs                                                        |
+| --------------- | ----------------------------------------------------------- |
+| `_checks.yml`   | `pre-commit`, `pytest`, `trufflehog`, `trivy-fs`             |
+| `_chart.yml`    | `test` (helm lint y unit tests) y `package`                  |
+| `_image.yml`    | `build`                                                      |
+
+El tag `X.Y.Z` no vuelve a correr los checks: el commit que se taggea ya pasó
+por el push a `main`.
+
+> **Nota:** para configurar checks obligatorios en branch protection, los
+> nombres son los del job llamador más los del job llamado:
+> `checks / Linters (pre-commit)`, `checks / Tests (pytest)`,
+> `checks / Secrets in git history (TruffleHog)`,
+> `checks / Vulnerabilities, secrets, misconfig (Trivy)`,
+> `chart / Lint y unit tests del chart`,
+> `chart / Empaquetar y publicar el chart` e `image / Construir la imagen`.
+> Si se le cambia el `name:` a un job, el check obligatorio deja de reportar y
+> los pull requests quedan bloqueados: hay que actualizarlo en los dos lados.
 
 ## Archivos
 
@@ -483,18 +522,13 @@ Las actions y las herramientas están fijadas a un SHA o digest.
 | `requirements.txt` | Dependencias de Python (`requests`, `PyYAML`, `Jinja2`, `boto3`) |
 | `requirements-dev.txt` | Dependencias para desarrollo y tests (`pytest`)     |
 | `tests/`           | Tests con pytest, uno por módulo de `hreidar/`           |
-| `.github/workflows/tests.yml` | Corre los tests en GitHub Actions             |
 | `.envrc`           | Variables de entorno y `layout python` para direnv       |
 | `Dockerfile`       | Imagen para ejecutar el reporte en el cluster            |
 | `.gitignore`       | Ignora el venv, cachés y los reportes generados          |
 | `.dockerignore`    | Excluye de la imagen el venv, `.git/` y los reportes generados |
 | `.pre-commit-config.yaml` | Linters del repo (ver [Linters](#linters))        |
-| `.github/workflows/lint.yml` | Corre los linters en GitHub Actions            |
-| `.github/workflows/docker.yml` | Construye la imagen y la publica en GHCR al crear un tag `X.Y.Z` |
 | `helm/hreidar/` | Chart de Helm que despliega el reporte como CronJob |
-| `.github/workflows/helm.yml` | Lint, unit tests y publicación del chart |
-| `.github/workflows/security.yml` | Corre el análisis de seguridad en cada push y PR |
-| `.github/workflows/static-analysis.yml` | Workflow reusable: TruffleHog y Trivy |
+| `.github/workflows/` | CI: un workflow por disparador (ver [Integración continua](#integración-continua)) |
 | `.github/workflows/templates/` | Templates de los resúmenes de cada herramienta |
 | `pyproject.toml`   | Configuración de ruff y pytest                           |
 | `.yamllint.yaml`   | Configuración de yamllint                                |

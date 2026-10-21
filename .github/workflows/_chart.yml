@@ -1,15 +1,15 @@
 ---
-name: Helm
+# Chart de Helm: lint, unit tests, empaquetado y publicación. Reusable: no
+# aparece en la pestaña Actions, lo invocan pull-request.yml y push.yml.
+name: Chart
 
 on:
-  push:
-    branches: [main, development]
-    paths: ["helm/**", ".github/workflows/helm.yml"]
-  pull_request:
-    paths: ["helm/**", ".github/workflows/helm.yml"]
-
-permissions:
-  contents: read
+  workflow_call:
+    inputs:
+      publish:
+        description: Publicar el chart en GHCR además de empaquetarlo.
+        type: boolean
+        default: false
 
 env:
   CHART: helm/hreidar
@@ -39,22 +39,46 @@ jobs:
       - name: Correr los unit tests del chart
         run: helm unittest "$CHART"
 
-  publish:
+  package:
     name: Empaquetar y publicar el chart
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Hace falta el historial para comparar contra la base y saber si el
+          # chart cambió.
+          fetch-depth: 0
 
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
 
+      - name: Ver si el chart cambió
+        id: changed
+        # Todo lo que sigue solo tiene sentido si este PR o este push tocaron
+        # helm/. Sin esto, un cambio que no toca el chart encuentra su versión
+        # ya publicada y falla sin motivo.
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          base="${PR_BASE:-${PUSH_BEFORE:-}}"
+          if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ]; then
+            # Rama nueva o push forzado: no hay contra qué comparar, se chequea.
+            changed=true
+          elif git diff --quiet "$base" HEAD -- "$CHART"; then
+            changed=false
+          else
+            changed=true
+          fi
+          echo "El chart cambió: $changed"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
       - name: Verificar que la versión del chart no esté publicada
         id: chart
+        if: steps.changed.outputs.changed == 'true'
         # La versión sale de Chart.yaml. Si ya está en el registry el chart
         # cambió sin bump, y el pipeline corta antes de pisar nada.
         env:
@@ -62,35 +86,48 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          name=$(helm show chart "$CHART" | grep '^name:' | cut -d: -f2 | tr -d '[:space:]')
-          version=$(helm show chart "$CHART" | grep '^version:' | cut -d: -f2 | tr -d '[:space:]')
+          meta=$(helm show chart "$CHART")
+          name=$(echo "$meta" | grep '^name:' | cut -d: -f2 | tr -d '[:space:]')
+          version=$(echo "$meta" | grep '^version:' | cut -d: -f2 | tr -d '[:space:]')
           repo="ghcr.io/${OWNER,,}/charts"
           echo "$TOKEN" | helm registry login ghcr.io \
             --username "$GITHUB_ACTOR" --password-stdin
-          if helm show chart "oci://$repo/$name" --version "$version" >/dev/null 2>&1; then
+
+          # Distinguir "no está publicado" de "no se pudo preguntar": tratar un
+          # error del registry como "no está" publicaría encima de una versión
+          # existente.
+          if out=$(helm show chart "oci://$repo/$name" --version "$version" 2>&1); then
             echo "::error file=$CHART/Chart.yaml::La versión $version de $name ya está publicada en $repo. Subí version: en $CHART/Chart.yaml."
             exit 1
           fi
+          case "$out" in
+            *"not found"*|*404*|*NAME_UNKNOWN*|*MANIFEST_UNKNOWN*) ;;
+            *)
+              echo "::error::No se pudo consultar $repo/$name: $out"
+              exit 1 ;;
+          esac
+
           echo "El chart $name $version no está publicado todavía."
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Empaquetar el chart
         id: package
+        if: steps.changed.outputs.changed == 'true'
         run: |
           set -euo pipefail
           helm package "$CHART" --destination dist
           echo "file=$(ls dist/*.tgz)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.changed.outputs.changed == 'true'
         with:
           name: chart
           path: ${{ steps.package.outputs.file }}
 
       - name: Publicar el chart en GHCR
-        # Solo desde main. En development y en los pull requests el chart se
-        # empaqueta y queda como artefacto del run, sin publicarse.
-        if: github.ref == 'refs/heads/main'
+        # En los pull requests el chart se empaqueta y queda como artefacto del
+        # run, sin publicarse.
+        if: inputs.publish && steps.changed.outputs.changed == 'true'
         env:
           FILE: ${{ steps.package.outputs.file }}
           REPO: ${{ steps.chart.outputs.repo }}
