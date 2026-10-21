@@ -8,6 +8,8 @@
     url          Endpoint de métricas consultado
     results      Lista de consultas, cada una con:
                    title, query, org_id  Datos de la consulta
+                   description           Texto que explica la sección, o vacío
+                   unit                  Unidad de los valores, o vacío
                    columns               Etiquetas (columnas) presentes
                    rows                  Lista de {labels: {...}, value: "..."}
                    error                 Mensaje de error, o vacío
@@ -30,10 +32,11 @@
     </p>
 {% for result in results %}
     <h3 style="margin:24px 0 4px">{{ result.title }}</h3>
-    <p style="margin:0 0 8px;color:#475467;font-size:12px">
-      Consulta:
-      <code style="background:#f2f4f7;padding:2px 4px;border-radius:3px">{{ result.query }}</code>
+  {% if result.description %}
+    <p style="margin:0 0 8px;color:#475467;font-size:13px">
+      {{ result.description }}
     </p>
+  {% endif %}
   {% if result.error %}
     <p style="font-size:14px">Sin datos por error.</p>
     <p style="color:#d92d20;font-weight:bold">
@@ -57,7 +60,7 @@
           {% for col in result.columns %}
           <td>{{ row.labels.get(col, "") }}</td>
           {% endfor %}
-          <td style="text-align:right">{{ row.value }}</td>
+          <td style="text-align:right">{{ row.value }}{% if result.unit %} <span style="color:#475467">{{ result.unit }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

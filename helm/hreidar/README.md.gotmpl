@@ -35,9 +35,14 @@ Desde el repo, sin publicar: `helm upgrade --install hreidar helm/hreidar -f val
 
 `queries.config` tiene la misma estructura que `queries.example.yaml` del repo:
 `title` opcional y la lista `queries`, donde cada ítem define `query`
-(obligatoria) y, opcionalmente, `title` y `org_id`. El chart lo serializa en el
-ConfigMap, lo monta en `queries.mountPath` y apunta la variable `REPORT_CONFIG`
-del contenedor al archivo resultante.
+(obligatoria) y, opcionalmente, `title`, `description`, `unit` y `org_id`. El
+chart lo serializa en el ConfigMap, lo monta en `queries.mountPath` y apunta la
+variable `REPORT_CONFIG` del contenedor al archivo resultante.
+
+El reporte **no muestra el PromQL**: quien lo recibe lee el `title` y el
+`description`. `unit` se imprime después de cada valor, tal cual se escribe
+(`s`, `ms`, `%`, `MiB`, `millicores`, `errores`), sin convertir ni reformatear
+el número. Si una consulta no tiene unidad clara, se omite y el valor va solo.
 
 ```yaml
 queries:
@@ -45,9 +50,15 @@ queries:
     title: Reporte semanal
     queries:
       - title: Targets caídos
+        description: Nodos que no respondieron al scrape.
         query: up == 0
-      - title: Latencia media HTTP > 0.3s (14d)
+        unit: targets
+      - title: Latencia media HTTP (14d)
+        description: >-
+          Tiempo promedio de respuesta de mi-app en los últimos 14 días.
+          Se listan solo los handlers por encima de 0,3 segundos.
         org_id: mi-tenant
+        unit: s
         query: |
           sort_desc(
             sum(increase(http_request_duration_seconds_sum{job="mi-app"}[14d])) by (handler)

@@ -10,7 +10,9 @@ Las consultas se definen en un archivo YAML (ver queries.example.yaml):
   title: Reporte de métricas        # opcional
   queries:
     - title: Targets caídos         # opcional (default: "Consulta N")
+      description: Targets que...   # opcional (explica la sección)
       query: up == 0                # obligatorio
+      unit: errores                 # opcional (va después de cada valor)
       org_id: mi-tenant             # opcional (default: METRICS_ORG_ID)
 
 Si se pasa una o más veces --query, se ejecutan solo esas consultas y no se

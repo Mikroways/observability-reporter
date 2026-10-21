@@ -97,6 +97,23 @@ def test_parse_queries_valores_explicitos(monkeypatch):
     assert specs[2].org_id == ""
 
 
+def test_parse_queries_description_y_unit():
+    raw = [
+        {
+            "query": "up",
+            "description": "  Targets que no responden.  ",
+            "unit": " errores ",
+        },
+        {"query": "up"},
+    ]
+    specs = parse_queries(raw, "src")
+    assert specs[0].description == "Targets que no responden."
+    assert specs[0].unit == "errores"
+    # Sin definirlos quedan vacíos: la sección no muestra ni texto ni unidad.
+    assert specs[1].description == ""
+    assert specs[1].unit == ""
+
+
 @pytest.mark.parametrize(
     ("raw", "message"),
     [

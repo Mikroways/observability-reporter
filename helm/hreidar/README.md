@@ -1,8 +1,8 @@
 # hreidar
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square)
+![Version: 0.0.4](https://img.shields.io/badge/Version-0.0.4-informational?style=flat-square)
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
-![AppVersion: 0.1.0](https://img.shields.io/badge/AppVersion-0.1.0-informational?style=flat-square)
+![AppVersion: 0.0.2](https://img.shields.io/badge/AppVersion-0.0.2-informational?style=flat-square)
 
 Reporte periódico de métricas de Grafana Mimir / Prometheus, enviado por correo con Amazon SES.
 
@@ -36,9 +36,14 @@ Desde el repo, sin publicar: `helm upgrade --install hreidar helm/hreidar -f val
 
 `queries.config` tiene la misma estructura que `queries.example.yaml` del repo:
 `title` opcional y la lista `queries`, donde cada ítem define `query`
-(obligatoria) y, opcionalmente, `title` y `org_id`. El chart lo serializa en el
-ConfigMap, lo monta en `queries.mountPath` y apunta la variable `REPORT_CONFIG`
-del contenedor al archivo resultante.
+(obligatoria) y, opcionalmente, `title`, `description`, `unit` y `org_id`. El
+chart lo serializa en el ConfigMap, lo monta en `queries.mountPath` y apunta la
+variable `REPORT_CONFIG` del contenedor al archivo resultante.
+
+El reporte **no muestra el PromQL**: quien lo recibe lee el `title` y el
+`description`. `unit` se imprime después de cada valor, tal cual se escribe
+(`s`, `ms`, `%`, `MiB`, `millicores`, `errores`), sin convertir ni reformatear
+el número. Si una consulta no tiene unidad clara, se omite y el valor va solo.
 
 ```yaml
 queries:
@@ -46,9 +51,15 @@ queries:
     title: Reporte semanal
     queries:
       - title: Targets caídos
+        description: Nodos que no respondieron al scrape.
         query: up == 0
-      - title: Latencia media HTTP > 0.3s (14d)
+        unit: targets
+      - title: Latencia media HTTP (14d)
+        description: >-
+          Tiempo promedio de respuesta de mi-app en los últimos 14 días.
+          Se listan solo los handlers por encima de 0,3 segundos.
         org_id: mi-tenant
+        unit: s
         query: |
           sort_desc(
             sum(increase(http_request_duration_seconds_sum{job="mi-app"}[14d])) by (handler)
@@ -134,7 +145,7 @@ helm unittest helm/hreidar
 | image.tag | string | `""` | Tag de la imagen. Por defecto, el `appVersion` del chart |
 | imagePullSecrets | list | `[]` | Array of objects, each one having key `name:` and value is a secretName. Allows gotpl expressions |
 | podSecurityContext | object | `runAsNonRoot: true`, uid/gid `10001`, `seccompProfile: RuntimeDefault` | securityContext del pod. Los uid/gid son los que crea el Dockerfile |
-| queries.config | object | un reporte de ejemplo con `up == 0` | Contenido del archivo de consultas, con la misma estructura que `queries.example.yaml`. Allows gotpl expressions |
+| queries.config | object | un reporte de ejemplo con `up == 0` | Contenido del archivo de consultas, con la misma estructura que `queries.example.yaml`: `query` obligatoria y `title`, `description`, `unit` y `org_id` opcionales. `description` explica la sección en el reporte (el PromQL no se muestra) y `unit` se imprime después de cada valor, sin convertir el número. Allows gotpl expressions |
 | queries.existingConfigMap | string | `""` | Usar un ConfigMap ya existente con las consultas en lugar del que crea el chart. Allows gotpl expressions |
 | queries.key | string | `"queries.yaml"` | Clave del ConfigMap que contiene el archivo de consultas |
 | queries.mountPath | string | `"/etc/hreidar"` | Directorio donde se monta el archivo de consultas |

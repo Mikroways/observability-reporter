@@ -18,11 +18,17 @@ DEFAULTS = {
 
 @dataclass(frozen=True)
 class QuerySpec:
-    """Una consulta del reporte."""
+    """Una consulta del reporte.
+
+    `description` es el texto que explica la sección en el reporte, y `unit`
+    la unidad que se imprime después de cada valor. Ambos son opcionales.
+    """
 
     title: str
     query: str
     org_id: str
+    description: str = ""
+    unit: str = ""
 
 
 def cfg(key: str) -> str:
@@ -66,6 +72,8 @@ def parse_queries(raw: Any, source: str) -> list[QuerySpec]:
                 title=str(item.get("title") or f"Consulta {index}"),
                 query=query,
                 org_id=str(item.get("org_id", default_org) or ""),
+                description=str(item.get("description") or "").strip(),
+                unit=str(item.get("unit") or "").strip(),
             )
         )
     return specs
