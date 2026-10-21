@@ -6,10 +6,10 @@ description: >-
 type: application
 # Versión del chart. El pipeline la lee de acá y falla si ya está publicada, así
 # que todo cambio bajo helm/ necesita su bump.
-version: 0.0.3
+version: 0.0.4
 # Versión de la aplicación: el tag de la imagen que despliega el chart. Solo sube
 # cuando se publica una imagen nueva.
-appVersion: "0.0.1"
+appVersion: "0.0.2"
 keywords:
   - prometheus
   - mimir

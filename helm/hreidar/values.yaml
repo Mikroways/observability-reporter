@@ -81,13 +81,17 @@ queries:
   mountPath: /etc/hreidar
   # -- Contenido del archivo de consultas, con la misma estructura que
   # `queries.example.yaml`: `title` opcional y la lista `queries`, cada una con
-  # `query` (obligatoria), `title` y `org_id` opcionales.
-  # Allows gotpl expressions.
+  # `query` (obligatoria) y `title`, `description`, `unit` y `org_id`
+  # opcionales. `description` es el texto que explica la sección en el reporte
+  # (el PromQL no se muestra) y `unit` se imprime después de cada valor, sin
+  # convertir el número. Allows gotpl expressions.
   config:
     title: Reporte de métricas
     queries:
       - title: Targets caídos
+        description: Nodos que no respondieron al scrape.
         query: up == 0
+        unit: targets
 
 # -- Key value pairs created as environment of the container. This key has a
 # higher precedence than `config.env` and `config.secretEnv`. It allows gotpl

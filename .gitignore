@@ -6,3 +6,4 @@ __pycache__/
 # Reportes generados
 *.html
 .docs
+.superpowers/*

@@ -41,6 +41,8 @@ def render_html(
             {
                 "title": result.spec.title,
                 "query": result.spec.query,
+                "description": result.spec.description,
+                "unit": result.spec.unit,
                 "org_id": result.spec.org_id,
                 "columns": result.columns,
                 "rows": [

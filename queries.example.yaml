@@ -6,10 +6,20 @@
 title: Reporte de métricas
 
 queries:
-  # title:  nombre de la sección (opcional; default "Consulta N")
-  # query:  consulta PromQL instantánea que devuelva un vector (obligatorio)
-  # org_id: tenant de Mimir para esta consulta (opcional; default METRICS_ORG_ID)
-  - title: Latencia media HTTP > 0.3s (14d)
+  # title:       nombre de la sección (opcional; default "Consulta N")
+  # description: texto que explica la sección, debajo del título (opcional).
+  #              Es lo que lee quien recibe el reporte: conviene que diga qué
+  #              se está midiendo, sin PromQL.
+  # query:       consulta PromQL instantánea que devuelva un vector (obligatorio)
+  # unit:        unidad que se imprime después de cada valor, tal cual se
+  #              escribe (opcional: "s", "ms", "%", "MiB", "millicores",
+  #              "errores"). El número no se convierte ni se reformatea.
+  # org_id:      tenant de Mimir para esta consulta (opcional; default METRICS_ORG_ID)
+  - title: Latencia media HTTP (14d)
+    description: >-
+      Tiempo promedio de respuesta de mi-app en los últimos 14 días.
+      Se listan solo los handlers por encima de 0,3 segundos.
+    unit: s
     query: |
       sort_desc(
         sum(increase(http_request_duration_seconds_sum{job="mi-app"}[14d])) by (instance, handler)
@@ -18,5 +28,7 @@ queries:
         > 0.3
       )
 
+  # Sin description ni unit: la sección muestra solo el título y el número
+  # pelado, igual que antes.
   - title: Targets caídos
     query: up == 0

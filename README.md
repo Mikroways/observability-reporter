@@ -55,12 +55,20 @@ Se definen en un archivo YAML (por defecto `queries.yaml`; se cambia con
 title: Reporte de métricas      # opcional
 queries:
   - title: Targets caídos       # opcional (default: "Consulta N")
+    description: Nodos que no respondieron al scrape.  # opcional
     query: up == 0              # obligatorio
+    unit: targets               # opcional
     org_id: mi-tenant           # opcional (default: METRICS_ORG_ID)
   - title: Otra consulta
     query: |
       sort_desc(sum(rate(http_requests_total[5m])) by (instance))
 ```
+
+`description` es el texto que va debajo del título de la sección, y es lo que
+lee quien recibe el reporte: el PromQL no se muestra. `unit` se imprime después
+de cada valor, tal cual se escribe (`s`, `ms`, `%`, `MiB`, `millicores`,
+`errores`); el número no se convierte ni se reformatea. Las dos son opcionales:
+sin ellas la sección muestra solo el título y el número pelado.
 
 Si se pasa `--query` (una o más veces) se ejecutan solo esas consultas y no se
 lee el archivo. No hay consulta por defecto: sin archivo ni `--query` el
@@ -101,12 +109,13 @@ El escapado de HTML es automático. Variables disponibles:
 | `title`      | Título del reporte                                                      |
 | `generated`  | Fecha de generación (UTC)                                               |
 | `url`        | Endpoint de métricas consultado                                         |
-| `results`    | Lista de consultas: `title`, `query`, `org_id`, `columns`, `rows`, `error` |
+| `results`    | Lista de consultas: `title`, `description`, `query`, `unit`, `org_id`, `columns`, `rows`, `error` |
 | `total_rows` | Total de filas de todas las consultas                                   |
 | `failed`     | Cantidad de consultas con error                                         |
 
 Cada elemento de `rows` tiene `labels` (diccionario de etiquetas) y `value`
-(valor ya formateado). Ejemplo mínimo:
+(valor ya formateado). El template por defecto no imprime `query`, pero sigue
+disponible para un template propio. Ejemplo mínimo:
 
 ```jinja
 {% for r in results %}
@@ -256,7 +265,9 @@ queries:
     title: Reporte de métricas
     queries:
       - title: Targets caídos
+        description: Nodos que no respondieron al scrape.
         query: up == 0
+        unit: targets
 ```
 
 ```bash
