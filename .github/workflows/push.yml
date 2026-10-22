@@ -1,0 +1,31 @@
+---
+# Todo lo que corre al mergear a main, en un solo run.
+name: Push a main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Sin cancel-in-progress: este workflow publica el chart. Cancelar un run a
+# medio publicar puede dejar sin publicar una versión que ya se mergeó, y el
+# repo GitOps pinea versiones exactas.
+concurrency:
+  group: push-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/_checks.yml
+
+  chart:
+    # Publica el chart si este push tocó helm/ y Chart.yaml trae una versión
+    # nueva. Si no tocó el chart, el job no hace nada.
+    uses: ./.github/workflows/_chart.yml
+    with:
+      publish: true
+    permissions:
+      contents: read
+      packages: write

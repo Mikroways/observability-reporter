@@ -1,0 +1,27 @@
+---
+# Todo lo que corre en un pull request, en un solo run.
+name: Pull request
+
+on: pull_request
+
+permissions:
+  contents: read
+
+# Un push nuevo a la rama del PR cancela el run anterior.
+concurrency:
+  group: pull-request-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    uses: ./.github/workflows/_checks.yml
+
+  chart:
+    # Solo lectura del registry: el chart se empaqueta pero no se publica.
+    uses: ./.github/workflows/_chart.yml
+    permissions:
+      contents: read
+      packages: read
+
+  image:
+    uses: ./.github/workflows/_image.yml

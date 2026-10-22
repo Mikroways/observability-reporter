@@ -1,0 +1,20 @@
+---
+# Publicación de la imagen al crear un tag X.Y.Z. El código del tag ya pasó los
+# checks al mergear a main, así que acá solo se construye y se publica.
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    uses: ./.github/workflows/_image.yml
+    with:
+      publish: true
+    permissions:
+      contents: read
+      packages: write

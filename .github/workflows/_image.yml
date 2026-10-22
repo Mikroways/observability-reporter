@@ -1,20 +1,22 @@
 ---
-name: Docker
+# Imagen del reporte: build y, cuando se pide, publicación en GHCR. Reusable:
+# no aparece en la pestaña Actions, lo invocan pull-request.yml y release.yml.
+name: Image
 
 on:
-  push:
-    tags: ["[0-9]+.[0-9]+.[0-9]+*"]
-  pull_request:
-
-permissions:
-  contents: read
-  packages: write
+  workflow_call:
+    inputs:
+      publish:
+        description: Publicar la imagen en GHCR además de construirla.
+        type: boolean
+        default: false
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   build:
+    name: Construir la imagen
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,7 +24,7 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: github.event_name != 'pull_request'
+        if: inputs.publish
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -40,7 +42,7 @@ jobs:
         with:
           context: .
           pull: true
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ inputs.publish }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
